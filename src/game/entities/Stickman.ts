@@ -51,15 +51,18 @@ export class Stickman extends Entity {
     private drawAvatarWithPose(ctx: CanvasRenderingContext2D) {
         if (!this.avatarImage) return;
 
-        const { width, height } = ctx.canvas;
+        const SCALE = 300;  // Scale factor for avatar size
 
         // Get key landmarks and convert to screen coordinates
         // Mirror horizontally (1 - x) so movements feel natural (like looking in a mirror)
+        // Scale down and center around player position
         const getPoint = (idx: number) => {
             const lm = this.landmarks[idx];
+            const centerX = 0.5;
+            const centerY = 0.5;
             return {
-                x: (1 - lm.x) * width,  // Mirror horizontally
-                y: lm.y * height
+                x: this.position.x + (1 - lm.x - centerX) * SCALE,  // Mirror and scale
+                y: this.position.y + (lm.y - centerY) * SCALE
             };
         };
 
@@ -179,7 +182,7 @@ export class Stickman extends Entity {
     }
 
     private drawFullSkeleton(ctx: CanvasRenderingContext2D) {
-        const { width, height } = ctx.canvas;
+        const SCALE = 300;  // Scale factor for skeleton size
 
         ctx.strokeStyle = this.color;
         ctx.lineWidth = 6;
@@ -189,9 +192,11 @@ export class Stickman extends Entity {
 
         const getPoint = (idx: number) => {
             const lm = this.landmarks[idx];
+            const centerX = 0.5;
+            const centerY = 0.5;
             return {
-                x: lm.x * width,
-                y: lm.y * height
+                x: this.position.x + (1 - lm.x - centerX) * SCALE,  // Mirror and scale
+                y: this.position.y + (lm.y - centerY) * SCALE
             };
         };
 

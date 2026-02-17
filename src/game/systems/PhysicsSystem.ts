@@ -1,5 +1,4 @@
 import { Entity } from '../entities/Entity';
-import type { Vector2 } from '../entities/Entity';
 
 export class PhysicsSystem {
     private gravity: number = 0.5;
