@@ -115,7 +115,7 @@ export class Renderer {
         this.drawFloorGlow(width * 0.75, floorY, time, 2);
     }
 
-    private drawEnergyWall(x: number, floorY: number, height: number, time: number, side: 'left' | 'right') {
+    private drawEnergyWall(x: number, floorY: number, _height: number, time: number, side: 'left' | 'right') {
         const wallPulse = Math.sin(time / 700 + (side === 'left' ? 0 : Math.PI)) * 0.3 + 0.5;
         const color = side === 'left' ? '0, 100, 255' : '255, 50, 50';
 
@@ -158,7 +158,6 @@ export class Renderer {
     }
 
     private drawCornerEnergy(x: number, y: number, time: number, mirror: boolean) {
-        const size = 80;
         const pulse = Math.sin(time / 600) * 0.3 + 0.5;
         const dir = mirror ? -1 : 1;
 
