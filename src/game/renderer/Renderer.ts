@@ -19,7 +19,7 @@ export class Renderer {
         const offset = screenShake.getOffset();
         this.ctx.translate(offset.x, offset.y);
 
-        this.ctx.fillStyle = '#050505';
+        this.ctx.fillStyle = '#0a100f'; // Dark teal base
         this.ctx.fillRect(-10, -10, this.canvas.width + 20, this.canvas.height + 20);
         this.drawArena();
 
@@ -37,14 +37,14 @@ export class Renderer {
             width / 2, height / 2, width
         );
         const pulse = Math.sin(time / 2000) * 0.05 + 0.95;
-        bgGradient.addColorStop(0, `rgba(10, 10, 26, ${pulse})`);
-        bgGradient.addColorStop(1, '#000000');
+        bgGradient.addColorStop(0, `rgba(255, 210, 194, ${pulse * 0.15})`); // Peach center (#ffd2c2)
+        bgGradient.addColorStop(1, '#050a09'); // Deeper teal edge
         this.ctx.fillStyle = bgGradient;
         this.ctx.fillRect(0, 0, width, height);
 
         // 2. Scanlines Effect
-        this.ctx.globalAlpha = 0.03;
-        this.ctx.fillStyle = '#00ffff';
+        this.ctx.globalAlpha = 0.04;
+        this.ctx.fillStyle = '#789a99'; // Teal
         const scanlineY = (time / 10) % height;
         for (let i = 0; i < 3; i++) {
             const y = (scanlineY + i * 200) % height;
@@ -54,7 +54,7 @@ export class Renderer {
 
         // 3. Pulsing Grid Floor
         const gridPulse = Math.sin(time / 1000) * 0.05 + 0.15;
-        this.ctx.strokeStyle = `rgba(0, 255, 255, ${gridPulse})`;
+        this.ctx.strokeStyle = `rgba(120, 154, 153, ${gridPulse})`; // Teal
         this.ctx.lineWidth = 1;
 
         // Horizontal grid lines
@@ -62,7 +62,7 @@ export class Renderer {
             const y = floorY + (i * i * 2);
             if (y > height) break;
             const linePulse = Math.sin(time / 800 + i * 0.3) * 0.05 + gridPulse;
-            this.ctx.strokeStyle = `rgba(0, 255, 255, ${linePulse})`;
+            this.ctx.strokeStyle = `rgba(120, 154, 153, ${linePulse})`;
             this.ctx.beginPath();
             this.ctx.moveTo(0, y);
             this.ctx.lineTo(width, y);
@@ -73,7 +73,7 @@ export class Renderer {
         const centerX = width / 2;
         for (let i = -12; i <= 12; i++) {
             const linePulse = Math.sin(time / 600 + i * 0.2) * 0.05 + gridPulse;
-            this.ctx.strokeStyle = `rgba(0, 255, 255, ${linePulse})`;
+            this.ctx.strokeStyle = `rgba(120, 154, 153, ${linePulse})`;
             this.ctx.beginPath();
             this.ctx.moveTo(centerX + (i * 30), floorY);
             this.ctx.lineTo(centerX + (i * 150), height);
@@ -84,8 +84,8 @@ export class Renderer {
         const glowPulse = Math.sin(time / 500) * 0.3 + 0.7;
 
         this.ctx.shadowBlur = 20;
-        this.ctx.shadowColor = `rgba(0, 255, 255, ${glowPulse * 0.5})`;
-        this.ctx.strokeStyle = `rgba(0, 255, 255, ${glowPulse})`;
+        this.ctx.shadowColor = `rgba(255, 210, 194, ${glowPulse * 0.5})`; // Peach (#ffd2c2)
+        this.ctx.strokeStyle = `rgba(255, 210, 194, ${glowPulse})`;
         this.ctx.lineWidth = 3;
         this.ctx.beginPath();
         this.ctx.moveTo(0, floorY);
@@ -93,7 +93,7 @@ export class Renderer {
         this.ctx.stroke();
 
         this.ctx.shadowBlur = 10;
-        this.ctx.strokeStyle = '#00ffff';
+        this.ctx.strokeStyle = '#ffd2c2';
         this.ctx.lineWidth = 2;
         this.ctx.beginPath();
         this.ctx.moveTo(0, floorY);
@@ -117,7 +117,7 @@ export class Renderer {
 
     private drawEnergyWall(x: number, floorY: number, _height: number, time: number, side: 'left' | 'right') {
         const wallPulse = Math.sin(time / 700 + (side === 'left' ? 0 : Math.PI)) * 0.3 + 0.5;
-        const color = side === 'left' ? '0, 100, 255' : '255, 50, 50';
+        const color = side === 'left' ? '120, 154, 153' : '255, 210, 194'; // Teal vs Peach
 
         // Glow
         this.ctx.shadowBlur = 25;
@@ -161,7 +161,7 @@ export class Renderer {
         const pulse = Math.sin(time / 600) * 0.3 + 0.5;
         const dir = mirror ? -1 : 1;
 
-        this.ctx.strokeStyle = `rgba(0, 255, 255, ${pulse * 0.4})`;
+        this.ctx.strokeStyle = `rgba(120, 154, 153, ${pulse * 0.4})`; // Teal
         this.ctx.lineWidth = 1;
 
         // Diagonal lines
@@ -174,7 +174,7 @@ export class Renderer {
         }
 
         // Corner dot
-        this.ctx.fillStyle = `rgba(0, 255, 255, ${pulse})`;
+        this.ctx.fillStyle = `rgba(120, 154, 153, ${pulse})`; // Teal
         this.ctx.beginPath();
         this.ctx.arc(x + dir * 8, y + 8, 3, 0, Math.PI * 2);
         this.ctx.fill();
@@ -183,8 +183,8 @@ export class Renderer {
     private drawFloorGlow(x: number, floorY: number, time: number, offset: number) {
         const pulse = Math.sin(time / 1200 + offset * 2) * 0.3 + 0.3;
         const gradient = this.ctx.createRadialGradient(x, floorY, 0, x, floorY, 40);
-        gradient.addColorStop(0, `rgba(0, 255, 255, ${pulse * 0.3})`);
-        gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+        gradient.addColorStop(0, `rgba(255, 210, 194, ${pulse * 0.3})`); // Peach
+        gradient.addColorStop(1, 'rgba(255, 210, 194, 0)');
         this.ctx.fillStyle = gradient;
         this.ctx.beginPath();
         this.ctx.arc(x, floorY, 40, 0, Math.PI * 2);

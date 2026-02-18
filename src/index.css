@@ -4,11 +4,14 @@
   box-sizing: border-box;
 }
 
-body, html, #root, .app-container {
+body,
+html,
+#root,
+.app-container {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #000;
+  background-color: #0a100f;
 }
 
 canvas {
