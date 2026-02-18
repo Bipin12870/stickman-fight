@@ -1,8 +1,8 @@
-import type { Vector2 } from '../entities/Entity';
+import type { Vector3 } from '../entities/Entity';
 
 export interface Particle {
-    position: Vector2;
-    velocity: Vector2;
+    position: Vector3;
+    velocity: Vector3;
     life: number;
     maxLife: number;
     color: string;
@@ -16,14 +16,15 @@ export class ParticleSystem {
     private atmosphericTimer: number = 0;
     private maxAtmospheric: number = 60;
 
-    // Emit impact particles (existing functionality)
-    public emit(x: number, y: number, color: string, count: number = 10) {
+    // Emit impact particles
+    public emit(x: number, y: number, color: string, count: number = 10, z: number = 100) {
         for (let i = 0; i < count; i++) {
             this.particles.push({
-                position: { x, y },
+                position: { x, y, z },
                 velocity: {
                     x: (Math.random() - 0.5) * 10,
-                    y: (Math.random() - 0.5) * 10
+                    y: (Math.random() - 0.5) * 10,
+                    z: 0
                 },
                 life: 1.0,
                 maxLife: 1.0,
@@ -40,10 +41,11 @@ export class ParticleSystem {
         // Update existing particles
         this.particles = this.particles.filter(p => {
             p.life -= lifeLoss;
-            p.position.x += p.velocity.x * (delta / 16.67);
-            p.position.y += p.velocity.y * (delta / 16.67);
+            const dtScale = delta / 16.67;
+            p.position.x += p.velocity.x * dtScale;
+            p.position.y += p.velocity.y * dtScale;
+            p.position.z += p.velocity.z * dtScale;
 
-            // Orb pulsing
             if (p.type === 'orb') {
                 p.size = 2 + Math.sin(Date.now() / 500 + p.position.x) * 0.5;
             }
@@ -68,8 +70,8 @@ export class ParticleSystem {
         if (rand < 0.6) {
             // Dust particle
             particle = {
-                position: { x: Math.random() * canvasWidth, y: canvasHeight + 10 },
-                velocity: { x: (Math.random() - 0.5) * 0.3, y: -0.2 - Math.random() * 0.3 },
+                position: { x: Math.random() * canvasWidth, y: canvasHeight + 10, z: Math.random() * 200 },
+                velocity: { x: (Math.random() - 0.5) * 0.3, y: -0.2 - Math.random() * 0.3, z: 0 },
                 life: 5 + Math.random() * 5,
                 maxLife: 10,
                 color: '#ffffff',
@@ -79,8 +81,8 @@ export class ParticleSystem {
         } else if (rand < 0.9) {
             // Energy orb
             particle = {
-                position: { x: Math.random() * canvasWidth, y: canvasHeight + 10 },
-                velocity: { x: (Math.random() - 0.5) * 0.5, y: -0.5 - Math.random() * 0.5 },
+                position: { x: Math.random() * canvasWidth, y: canvasHeight + 10, z: Math.random() * 200 },
+                velocity: { x: (Math.random() - 0.5) * 0.5, y: -0.5 - Math.random() * 0.5, z: 0 },
                 life: 8 + Math.random() * 4,
                 maxLife: 12,
                 color: '#00ffff',
@@ -91,8 +93,8 @@ export class ParticleSystem {
         } else {
             // Sparkle
             particle = {
-                position: { x: Math.random() * canvasWidth, y: Math.random() * canvasHeight },
-                velocity: { x: 0, y: 0 },
+                position: { x: Math.random() * canvasWidth, y: Math.random() * canvasHeight, z: Math.random() * 200 },
+                velocity: { x: 0, y: 0, z: 0 },
                 life: 0.5 + Math.random() * 0.5,
                 maxLife: 1,
                 color: '#00ffff',
@@ -116,7 +118,6 @@ export class ParticleSystem {
                 ctx.fillStyle = p.color;
                 ctx.fillRect(p.position.x, p.position.y, p.size, p.size);
             } else if (p.type === 'orb') {
-                // Glowing orb
                 const gradient = ctx.createRadialGradient(
                     p.position.x, p.position.y, 0,
                     p.position.x, p.position.y, p.size * 3

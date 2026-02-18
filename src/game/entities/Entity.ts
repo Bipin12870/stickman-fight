@@ -1,11 +1,12 @@
-export type Vector2 = {
+export type Vector3 = {
     x: number;
     y: number;
+    z: number;
 };
 
 export abstract class Entity {
-    public position: Vector2 = { x: 0, y: 0 };
-    public velocity: Vector2 = { x: 0, y: 0 };
+    public position: Vector3 = { x: 0, y: 0, z: 0 };
+    public velocity: Vector3 = { x: 0, y: 0, z: 0 };
     public width: number = 50;
     public height: number = 100;
     public color: string = '#fff';

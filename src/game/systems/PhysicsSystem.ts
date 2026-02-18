@@ -12,6 +12,7 @@ export class PhysicsSystem {
             // Apply velocity
             entity.position.x += entity.velocity.x * (delta / 16.67);
             entity.position.y += entity.velocity.y * (delta / 16.67);
+            entity.position.z += entity.velocity.z * (delta / 16.67);
 
             // Simple ground collision (placeholder)
             const groundY = 300;
@@ -19,6 +20,7 @@ export class PhysicsSystem {
                 entity.position.y = groundY;
                 entity.velocity.y = 0;
                 entity.velocity.x *= this.friction;
+                entity.velocity.z *= this.friction;
             }
         });
     }

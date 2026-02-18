@@ -37,6 +37,7 @@ export class CombatSystem {
     // Ranges
     private readonly PUNCH_RANGE = 80;
     private readonly KICK_RANGE = 100;
+    private readonly DEPTH_TOLERANCE = 35;
 
     // Combo
     private readonly COMBO_WINDOW = 1500; // ms to chain hits
@@ -112,8 +113,16 @@ export class CombatSystem {
         // Player blocking
         this.playerState.isBlocking = playerActions.block;
 
-        // Distance check
-        const dist = Math.abs(player.position.x - opponent.position.x);
+        // Distance check using effective visual positions
+        const playerCenter = player.getEffectiveCenter();
+        const opponentCenter = opponent.getEffectiveCenter();
+
+        // Horizontal distance
+        const dx = Math.abs(playerCenter.x - opponentCenter.x);
+        // Depth distance
+        const dz = Math.abs(playerCenter.z - opponentCenter.z);
+
+        const depthThreshold = this.DEPTH_TOLERANCE;
 
         // --- Player attacks ---
         if (!this.playerState.isHitStunned && this.playerState.attackCooldown <= 0) {
@@ -122,7 +131,7 @@ export class CombatSystem {
                 this.playerState.isAttacking = true;
                 this.playerState.attackCooldown = this.PUNCH_COOLDOWN;
 
-                if (dist < this.PUNCH_RANGE) {
+                if (dx < this.PUNCH_RANGE && dz < depthThreshold) {
                     let dmg = this.PUNCH_DAMAGE;
                     // Combo bonus
                     dmg += dmg * this.COMBO_BONUS * this.playerState.comboCount;
@@ -148,7 +157,7 @@ export class CombatSystem {
                 this.playerState.isAttacking = true;
                 this.playerState.attackCooldown = this.KICK_COOLDOWN;
 
-                if (dist < this.KICK_RANGE) {
+                if (dx < this.KICK_RANGE && dz < depthThreshold) {
                     let dmg = this.KICK_DAMAGE;
                     dmg += dmg * this.COMBO_BONUS * this.playerState.comboCount;
                     if (this.opponentState.isBlocking) {
@@ -175,13 +184,13 @@ export class CombatSystem {
         // --- AI attacks ---
         if (aiAttacking && !this.opponentState.isHitStunned && this.opponentState.attackCooldown <= 0) {
             const aiAttackType: AttackType = Math.random() > 0.6 ? 'kick' : 'punch';
+            const range = aiAttackType === 'punch' ? this.PUNCH_RANGE : this.KICK_RANGE;
+
             this.opponentState.attackType = aiAttackType;
             this.opponentState.isAttacking = true;
-
-            const range = aiAttackType === 'punch' ? this.PUNCH_RANGE : this.KICK_RANGE;
             this.opponentState.attackCooldown = aiAttackType === 'punch' ? this.PUNCH_COOLDOWN : this.KICK_COOLDOWN;
 
-            if (dist < range) {
+            if (dx < range && dz < depthThreshold) {
                 let dmg = aiAttackType === 'punch' ? this.AI_PUNCH_DAMAGE : this.AI_KICK_DAMAGE;
                 if (this.playerState.isBlocking) {
                     dmg *= (1 - this.BLOCK_REDUCTION);
@@ -205,14 +214,17 @@ export class CombatSystem {
     }
 
     private applyHitEffects(target: Stickman, attacker: Stickman, damage: number, type: AttackType) {
-        // Hit stun
-        const targetState = target === this.getTargetState(target) ? this.playerState : this.opponentState;
+        // Find correct target state
+        const targetState = target.name === 'Player' ? this.playerState : this.opponentState;
+
         targetState.isHitStunned = true;
         targetState.hitStunTimer = 80;
         targetState.hitFlashTimer = 150;
 
-        // Knockback
-        const direction = target.position.x > attacker.position.x ? 1 : -1;
+        // Knockback — use effective center for direction
+        const targetCenter = target.getEffectiveCenter();
+        const attackerCenter = attacker.getEffectiveCenter();
+        const direction = targetCenter.x > attackerCenter.x ? 1 : -1;
         const knockback = type === 'kick' ? 6 : 3;
         targetState.knockbackVelocity = direction * knockback;
 
@@ -223,21 +235,16 @@ export class CombatSystem {
         // Hit freeze
         screenShake.freeze(3);
 
-        // Particles
-        const hitX = (target.position.x + attacker.position.x) / 2;
-        const hitY = target.position.y - 30;
+        // Particles — use effective center for hit position
+        const hitX = (targetCenter.x + attackerCenter.x) / 2;
+        const hitY = targetCenter.y - 30;
         const color = type === 'kick' ? '#ffaa00' : '#ff4444';
-        particleSystem.emit(hitX, hitY, color, 15);
+        particleSystem.emit(hitX, hitY, color, 15, targetCenter.z);
 
         // Flash on big damage
         if (damage > 12) {
             screenShake.flash(100);
         }
-    }
-
-    // Helper to determine which combat state belongs to target
-    private getTargetState(_target: Stickman): any {
-        return null; // Not used directly, state is determined by context
     }
 
     public getPlayerState(): CombatState { return this.playerState; }

@@ -30,6 +30,8 @@ export class Game {
 
         this.player = new Stickman('Player', 200, 300, '#00aaff');
         this.opponent = new Stickman('AI', 600, 300, '#ff4444');
+        this.player.position.z = 100;
+        this.opponent.position.z = 100;
         this.opponent.facingRight = false;
 
         this.stateManager.subscribe((newState) => {
@@ -46,7 +48,6 @@ export class Game {
         this.loop.start();
         this.stateManager.setState('BOOT');
 
-        // Async initialize PoseService (non-blocking)
         poseService.init().then(() => {
             console.log('[Game] Pose system initialized, switching to PoseStrategy');
             this.input.setStrategy(new PoseStrategy());
@@ -54,31 +55,26 @@ export class Game {
             console.error('[Game] Pose initialization failed, staying on Keyboard:', err);
         });
 
-        // Boot → Round Start
         setTimeout(() => {
             this.startRound();
         }, 2000);
     }
 
     private startRound() {
-        // Reset positions
-        this.player.position = { x: 200, y: 300 };
-        this.opponent.position = { x: 600, y: 300 };
-        this.player.velocity = { x: 0, y: 0 };
-        this.opponent.velocity = { x: 0, y: 0 };
+        this.player.position = { x: 200, y: 300, z: 100 };
+        this.opponent.position = { x: 600, y: 300, z: 100 };
+        this.player.velocity = { x: 0, y: 0, z: 0 };
+        this.opponent.velocity = { x: 0, y: 0, z: 0 };
         this.player.setState('idle');
         this.opponent.setState('idle');
 
-        // Reset health
         hudSystem.reset();
         combatSystem.reset();
 
-        // Announce round
         this.stateManager.setState('ROUND_START');
         hudSystem.announce(`ROUND ${hudSystem.round}`, 1500, '#00ffff');
         soundSystem.play('bell');
 
-        // After announcement, start fighting
         setTimeout(() => {
             hudSystem.announce('FIGHT!', 1000, '#ffdd00');
             setTimeout(() => {
@@ -104,7 +100,6 @@ export class Game {
         screenShake.shake(12, 500);
         screenShake.slowMotion(0.3, 1000);
 
-        // Check for match winner
         setTimeout(() => {
             if (hudSystem.playerWins >= 2) {
                 this.stateManager.setState('VICTORY');
@@ -113,7 +108,6 @@ export class Game {
                 this.stateManager.setState('VICTORY');
                 hudSystem.announce('DEFEAT', 3000, '#ff3333', 'TRY AGAIN');
             } else {
-                // Next round
                 hudSystem.round++;
                 setTimeout(() => {
                     this.startRound();
@@ -125,30 +119,58 @@ export class Game {
     private update = (delta: number) => {
         const state = this.stateManager.getState();
 
-        // Screen shake update (may signal freeze)
         const shouldUpdate = screenShake.update(delta);
-        if (!shouldUpdate) return; // Hit freeze — skip game update
+        if (!shouldUpdate) return;
 
-        // Apply time scale
         const scaledDelta = delta * screenShake.getTimeScale();
 
         this.input.update();
-
-        // HUD always updates (for animations)
         hudSystem.update(scaledDelta);
 
         if (state === 'FIGHTING') {
             const inputState = this.input.getState();
 
-            // Sync landmarks if pose system is ready
+            // ── Pose landmark sync ──────────────────────────────────────
             if (poseService.getIsReady()) {
-                this.player.landmarks = poseService.getLandmarks();
+                const lms = poseService.getLandmarks();
+                this.player.landmarks = lms;
+
+                // FIXED: sync player Z from hips (same as before)
+                const hipL = lms[23];
+                const hipR = lms[24];
+                if (hipL && hipR) {
+                    const avgZ = (hipL.z + hipR.z) / 2;
+                    const depthZ = Math.max(0, Math.min(200, 100 - (avgZ * 300)));
+                    this.player.position.z = depthZ;
+                }
+
+                // FIXED: sync player Y from shoulders so jumps are real
+                // MediaPipe landmark 11 = left shoulder, 12 = right shoulder
+                // Camera Y is 0 (top) → 1 (bottom).
+                // In your game, y=300 is ground, smaller y = higher up.
+                // When player physically jumps, their shoulders rise → avgShoulderY decreases.
+                const shoulderL = lms[11];
+                const shoulderR = lms[12];
+                if (shoulderL && shoulderR) {
+                    const avgShoulderY = (shoulderL.y + shoulderR.y) / 2;
+                    // Map: 0.3 (high jump) → y=150,  0.6 (standing) → y=300
+                    const mappedY = Math.max(100, Math.min(300, avgShoulderY * 500));
+                    this.player.position.y = mappedY;
+
+                    // Give physics a nudge upward when player is clearly in the air
+                    // so the arc feels natural instead of teleporting
+                    if (mappedY < 260 && this.player.velocity.y >= 0) {
+                        this.player.velocity.y = -8;
+                    }
+                }
             }
 
-            // Player facing
-            this.player.facingRight = this.player.position.x < this.opponent.position.x;
+            // ── Player facing ───────────────────────────────────────────
+            const playerCenter = this.player.getEffectiveCenter();
+            const opponentCenter = this.opponent.getEffectiveCenter();
+            this.player.facingRight = playerCenter.x < opponentCenter.x;
 
-            // Set player visual state from input
+            // ── Player actions from input ───────────────────────────────
             if (inputState.actions.block) {
                 this.player.setState('blocking', 100);
             } else if (inputState.actions.punch) {
@@ -157,16 +179,30 @@ export class Game {
                 this.player.setState('kicking', 250);
             }
 
-            // Apply input to player velocity
-            this.player.velocity.x = inputState.move.x * 5;
-            if (inputState.actions.jump && this.player.velocity.y === 0) {
-                this.player.velocity.y = -12;
+            // ── Player X movement ───────────────────────────────────────
+            if (!inputState.actions.block) {
+                this.player.velocity.x = inputState.move.x * 5;
+            } else {
+                this.player.velocity.x = 0;
             }
 
-            // AI Logic
+            // ── AI update ───────────────────────────────────────────────
+            // AI now receives the fully-synced player position (X, Y, Z all correct)
+            // before this call, so it chases in all 3 axes correctly.
             aiSystem.update(this.opponent, this.player, scaledDelta);
 
-            // Combat System
+            // ── Debug Z/Y tracking ──────────────────────────────────────
+            if ((window as any)._showDebug) {
+                (window as any)._debugZ = {
+                    playerZ: this.player.position.z.toFixed(1),
+                    aiZ: this.opponent.position.z.toFixed(1),
+                    playerY: this.player.position.y.toFixed(1),
+                    aiY: this.opponent.position.y.toFixed(1),
+                    aiState: aiSystem.getCurrentState(),
+                };
+            }
+
+            // ── Combat ──────────────────────────────────────────────────
             const damage = combatSystem.update(
                 this.player,
                 this.opponent,
@@ -175,16 +211,12 @@ export class Game {
                 scaledDelta
             );
 
-            // Apply damage
             if (damage.opponentDamage > 0) {
                 hudSystem.opponentHealth -= damage.opponentDamage;
                 hudSystem.flashOpponentDamage();
                 this.opponent.hitFlash = true;
                 setTimeout(() => { this.opponent.hitFlash = false; }, 100);
-
-                if (damage.opponentDamage > 12) {
-                    soundSystem.play('combo');
-                }
+                if (damage.opponentDamage > 12) soundSystem.play('combo');
             }
             if (damage.playerDamage > 0) {
                 hudSystem.playerHealth -= damage.playerDamage;
@@ -193,33 +225,28 @@ export class Game {
                 setTimeout(() => { this.player.hitFlash = false; }, 100);
             }
 
-            // Combo display
             hudSystem.playerCombo = combatSystem.getPlayerCombo();
             hudSystem.opponentCombo = combatSystem.getOpponentCombo();
 
-            // Clamp health
-            hudSystem.playerHealth = Math.max(0, hudSystem.playerHealth);
-            hudSystem.opponentHealth = Math.max(0, hudSystem.opponentHealth);
-
-            // Physics Update
+            // ── Physics ─────────────────────────────────────────────────
             physicsSystem.update([this.player, this.opponent], scaledDelta);
 
-            // Arena boundary enforcement
+            // ── Arena bounds ─────────────────────────────────────────────
             this.player.position.x = Math.max(50, Math.min(750, this.player.position.x));
+            this.player.position.z = Math.max(0, Math.min(200, this.player.position.z));
             this.opponent.position.x = Math.max(50, Math.min(750, this.opponent.position.x));
+            this.opponent.position.z = Math.max(0, Math.min(200, this.opponent.position.z));
 
-            // Update characters
+            // ── Entity update ────────────────────────────────────────────
             this.player.update(scaledDelta);
             this.opponent.update(scaledDelta);
 
-            // Update atmospheric particles
             particleSystem.update(scaledDelta, this.renderer?.getContext().canvas.width, this.renderer?.getContext().canvas.height);
 
-            // Round timer
+            // ── Round timer ──────────────────────────────────────────────
             hudSystem.roundTimer -= scaledDelta / 1000;
             if (hudSystem.roundTimer <= 0) {
                 hudSystem.roundTimer = 0;
-                // Time up — whoever has more health wins
                 if (hudSystem.playerHealth >= hudSystem.opponentHealth) {
                     this.endRound('player');
                 } else {
@@ -227,7 +254,7 @@ export class Game {
                 }
             }
 
-            // KO check
+            // ── KO check ─────────────────────────────────────────────────
             if (hudSystem.opponentHealth <= 0) {
                 this.endRound('player');
             } else if (hudSystem.playerHealth <= 0) {
@@ -235,16 +262,15 @@ export class Game {
             }
 
         } else if (state === 'ROUND_START' || state === 'ROUND_END' || state === 'KO') {
-            // Keep updating physics/particles during transitions
             physicsSystem.update([this.player, this.opponent], scaledDelta);
             this.player.update(scaledDelta);
             this.opponent.update(scaledDelta);
             particleSystem.update(scaledDelta, this.renderer?.getContext().canvas.width, this.renderer?.getContext().canvas.height);
+
         } else if (state === 'VICTORY') {
             particleSystem.update(scaledDelta, this.renderer?.getContext().canvas.width, this.renderer?.getContext().canvas.height);
             this.roundTransitionTimer += scaledDelta;
 
-            // Emit celebration particles
             if (this.roundTransitionTimer > 200) {
                 this.roundTransitionTimer = 0;
                 const canvasW = this.renderer?.getContext().canvas.width || 800;
@@ -257,14 +283,12 @@ export class Game {
             }
         }
 
-        // Keep linter happy for now
         (window as any)._lastDelta = delta;
     };
 
     private render = (interpolation: number) => {
         if (!this.renderer) return;
 
-        // Basic FPS calculation for debug
         const now = performance.now();
         const fps = Math.round(1000 / (now - ((window as any)._lastRender || (now - 16))));
         (window as any)._lastRender = now;
@@ -272,17 +296,22 @@ export class Game {
 
         this.renderer.clear();
 
-        // Draw character shadows
         const ctx = this.renderer.getContext();
         const offset = screenShake.getOffset();
         ctx.save();
         ctx.translate(offset.x, offset.y);
+
+        const playerShadowCenter = this.player.getEffectiveCenter();
+        const opponentShadowCenter = this.opponent.getEffectiveCenter();
+        const playerScale = this.player.getDepthScale();
+        const opponentScale = this.opponent.getDepthScale();
+
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.beginPath();
-        ctx.ellipse(this.player.position.x + 25, 350, 20, 5, 0, 0, Math.PI * 2);
+        ctx.ellipse(playerShadowCenter.x, playerShadowCenter.y + 60 * playerScale, 20 * playerScale, 5 * playerScale, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.ellipse(this.opponent.position.x + 25, 350, 20, 5, 0, 0, Math.PI * 2);
+        ctx.ellipse(opponentShadowCenter.x, opponentShadowCenter.y + 60 * opponentScale, 20 * opponentScale, 5 * opponentScale, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
@@ -290,12 +319,8 @@ export class Game {
         this.renderer.drawEntity(this.opponent, interpolation);
 
         particleSystem.draw(this.renderer.getContext());
-
-        // Hit flash overlay
         this.renderer.drawFlash();
-
         hudSystem.draw(this.renderer);
-
         this.renderer.drawDebugInfo({
             state: this.stateManager.getState(),
             fps: fps

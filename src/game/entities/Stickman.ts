@@ -25,7 +25,7 @@ export class Stickman extends Entity {
     constructor(name: string, x: number, y: number, color: string) {
         super();
         this.name = name;
-        this.position = { x, y };
+        this.position = { x, y, z: 0 };
         this.color = color;
 
         if (name === 'Player') {
@@ -64,6 +64,56 @@ export class Stickman extends Entity {
         }
     }
 
+    /**
+     * Returns a scale factor based on the Z-depth.
+     * Scale 1.0 is the "neutral" depth. 
+     * Higher Z = closer to camera = larger scale.
+     */
+    public getDepthScale(): number {
+        // Map Z [0, 200] to Scale [0.5, 1.5]
+        return 0.5 + (this.position.z / 200);
+    }
+
+    /**
+     * Vertical offset to simulate perspective.
+     * Higher Z (closer) looks "lower" on the horizon.
+     */
+    public getPerspectiveOffsetY(): number {
+        // Map Z [0, 200] to Y offset [0, 50]
+        return (this.position.z / 200) * 50;
+    }
+
+    /**
+     * Returns the effective visual center of the stickman.
+     * If landmarks are available, computes position from hip midpoint using
+     * the same coordinate transform as the rendering code.
+     * Otherwise falls back to the raw position.
+     */
+    public getEffectiveCenter(): { x: number; y: number; z: number } {
+        const baseZ = this.position.z;
+        if (this.landmarks.length > 0) {
+            const SCALE = 300 * this.getDepthScale();
+            const centerX = 0.5;
+            const centerY = 0.5;
+            const leftHip = this.landmarks[23];
+            const rightHip = this.landmarks[24];
+            if (leftHip && rightHip) {
+                const midLmX = (leftHip.x + rightHip.x) / 2;
+                const midLmY = (leftHip.y + rightHip.y) / 2;
+                return {
+                    x: this.position.x + (1 - midLmX - centerX) * SCALE,
+                    y: this.position.y + (midLmY - centerY) * SCALE + this.getPerspectiveOffsetY(),
+                    z: baseZ
+                };
+            }
+        }
+        return {
+            x: this.position.x,
+            y: this.position.y + this.getPerspectiveOffsetY(),
+            z: baseZ
+        };
+    }
+
     draw(ctx: CanvasRenderingContext2D, _interpolation: number) {
         if (this.name === 'Player' && this.landmarks.length > 0 && this.imageLoaded && this.avatarImage) {
             this.drawAvatarWithPose(ctx);
@@ -75,17 +125,19 @@ export class Stickman extends Entity {
     }
 
     private drawAvatarWithPose(ctx: CanvasRenderingContext2D) {
-        if (!this.avatarImage) return;
+        if (!this.avatarImage || this.landmarks.length === 0) return;
 
-        const SCALE = 300;
+        const SCALE = 300 * this.getDepthScale();
+        const centerX = 0.5;
+        const centerY = 0.5;
+        const perspectiveY = this.getPerspectiveOffsetY();
 
+        // Helper to get scaled point
         const getPoint = (idx: number) => {
             const lm = this.landmarks[idx];
-            const centerX = 0.5;
-            const centerY = 0.5;
             return {
                 x: this.position.x + (1 - lm.x - centerX) * SCALE,
-                y: this.position.y + (lm.y - centerY) * SCALE
+                y: this.position.y + (lm.y - centerY) * SCALE + perspectiveY
             };
         };
 
@@ -260,8 +312,15 @@ export class Stickman extends Entity {
     private drawBasicStick(ctx: CanvasRenderingContext2D) {
         const { x, y } = this.position;
         const dir = this.facingRight ? 1 : -1;
+        const scale = this.getDepthScale();
+        const perspectiveY = this.getPerspectiveOffsetY();
 
         ctx.save();
+
+        // Perspective shift and scaling
+        ctx.translate(x, y + perspectiveY);
+        ctx.scale(scale, scale);
+        ctx.translate(-x, -y);
 
         // Hit flash
         if (this.hitFlash) {
