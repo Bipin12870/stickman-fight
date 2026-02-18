@@ -5,17 +5,27 @@ export type AIState = 'IDLE' | 'WANDER' | 'CHASE' | 'ATTACK' | 'BLOCK' | 'RETREA
 
 export class AISystem {
     private currentState: AIState = 'WANDER';
-    private reactionTime: number = 500; // ms
+    private reactionTime: number = 400; // ms
     private lastUpdate: number = 0;
     private wanderTimer: number = 0;
     private wanderDirectionX: number = 1;
-    private wanderDirectionY: number = 0;
-    private wanderDuration: number = 2000; // Change direction every 2 seconds
+    private wanderDuration: number = 2000;
+    private _isAttacking: boolean = false;
+    private _isBlocking: boolean = false;
+    private attackTimer: number = 0;
 
     public update(ai: Stickman, player: Stickman, delta: number) {
         const now = performance.now();
+
+        // Update attack timer
+        if (this.attackTimer > 0) {
+            this.attackTimer -= delta;
+            if (this.attackTimer <= 0) {
+                this._isAttacking = false;
+            }
+        }
+
         if (now - this.lastUpdate < this.reactionTime) {
-            // Still execute current state even if not changing state
             this.executeState(ai, player, delta);
             return;
         }
@@ -23,70 +33,106 @@ export class AISystem {
 
         const dist = this.getDistance(ai.position, player.position);
 
-        // State decision logic
+        // Face the player
+        ai.facingRight = ai.position.x < player.position.x;
+
+        // Smarter state decisions based on distance + health
+        const healthRatio = 1; // Could be passed in for smarter AI
         if (dist > 300) {
-            this.currentState = 'WANDER'; // Too far, just wander
+            this.currentState = 'WANDER';
         } else if (dist > 150) {
-            this.currentState = 'CHASE'; // Close enough to chase
+            this.currentState = 'CHASE';
         } else if (dist < 60) {
-            this.currentState = 'RETREAT'; // Too close, back off
+            // Very close — prefer attack or retreat
+            if (Math.random() > 0.3) {
+                this.currentState = 'ATTACK';
+            } else {
+                this.currentState = 'RETREAT';
+            }
         } else {
-            // In combat range - randomly attack or block
-            this.currentState = Math.random() > 0.5 ? 'ATTACK' : 'BLOCK';
+            // Combat range
+            const roll = Math.random();
+            if (roll < 0.45) {
+                this.currentState = 'ATTACK';
+            } else if (roll < 0.7) {
+                this.currentState = 'CHASE';
+            } else if (roll < 0.85) {
+                this.currentState = 'BLOCK';
+            } else {
+                this.currentState = 'RETREAT';
+            }
         }
+
+        // Keep linter happy
+        void healthRatio;
 
         this.executeState(ai, player, delta);
     }
 
     private executeState(ai: Stickman, player: Stickman, delta: number) {
+        const isGrounded = ai.position.y >= 300;
+        this._isBlocking = false;
+
         switch (this.currentState) {
             case 'WANDER':
-                // Wander around the arena in all directions
                 this.wanderTimer += delta;
                 if (this.wanderTimer > this.wanderDuration) {
                     this.wanderTimer = 0;
-                    // Random direction in 2D space
-                    this.wanderDirectionX = (Math.random() - 0.5) * 2; // -1 to 1
-                    this.wanderDirectionY = (Math.random() - 0.5) * 2; // -1 to 1
-                    this.wanderDuration = 1000 + Math.random() * 2000; // 1-3 seconds
+                    this.wanderDirectionX = (Math.random() - 0.5) * 2;
+                    this.wanderDuration = 1000 + Math.random() * 2000;
                 }
                 ai.velocity.x = this.wanderDirectionX * 2;
-                ai.velocity.y = this.wanderDirectionY * 2;
 
-                // Keep AI in bounds (roughly)
-                if (ai.position.x < 100) this.wanderDirectionX = Math.abs(this.wanderDirectionX);
+                if (isGrounded && Math.random() < 0.01) {
+                    ai.velocity.y = -12;
+                }
+
+                if (ai.position.x < 80) this.wanderDirectionX = Math.abs(this.wanderDirectionX);
                 if (ai.position.x > 700) this.wanderDirectionX = -Math.abs(this.wanderDirectionX);
-                if (ai.position.y < 100) this.wanderDirectionY = Math.abs(this.wanderDirectionY);
-                if (ai.position.y > 400) this.wanderDirectionY = -Math.abs(this.wanderDirectionY);
+
+                ai.setState('idle');
                 break;
 
             case 'CHASE':
-                // Chase player in both X and Y
-                ai.velocity.x = ai.position.x < player.position.x ? 3 : -3;
-                ai.velocity.y = ai.position.y < player.position.y ? 3 : -3;
+                ai.velocity.x = ai.position.x < player.position.x ? 3.5 : -3.5;
+
+                if (isGrounded && player.position.y < ai.position.y - 50) {
+                    ai.velocity.y = -12;
+                }
+                ai.setState('idle');
                 break;
 
             case 'RETREAT':
-                // Retreat from player in both X and Y
-                ai.velocity.x = ai.position.x < player.position.x ? -3 : 3;
-                ai.velocity.y = ai.position.y < player.position.y ? -3 : 3;
+                ai.velocity.x = ai.position.x < player.position.x ? -3.5 : 3.5;
+
+                if (isGrounded && Math.random() < 0.05) {
+                    ai.velocity.y = -12;
+                }
+                ai.setState('idle');
                 break;
 
             case 'ATTACK':
                 ai.velocity.x = 0;
-                ai.velocity.y = 0;
-                // Attack logic would go here
+
+                // Attack with cooldown
+                if (this.attackTimer <= 0) {
+                    this._isAttacking = true;
+                    const attackType = Math.random() > 0.6 ? 'kicking' : 'punching';
+                    ai.setState(attackType, 300);
+                    this.attackTimer = 600 + Math.random() * 400; // 600-1000ms between attacks
+                }
                 break;
 
             case 'BLOCK':
                 ai.velocity.x = 0;
-                ai.velocity.y = 0;
+                this._isBlocking = true;
+                ai.setState('blocking', 100);
                 break;
 
             case 'IDLE':
             default:
                 ai.velocity.x = 0;
-                ai.velocity.y = 0;
+                ai.setState('idle');
                 break;
         }
     }
@@ -97,6 +143,14 @@ export class AISystem {
 
     public getCurrentState(): AIState {
         return this.currentState;
+    }
+
+    public isAttacking(): boolean {
+        return this._isAttacking;
+    }
+
+    public isBlocking(): boolean {
+        return this._isBlocking;
     }
 }
 

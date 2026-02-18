@@ -49,6 +49,10 @@ export class CameraService {
         this.isInitialized = false;
     }
 
+    public getVideo(): HTMLVideoElement | null {
+        return this.videoElement;
+    }
+
     public getIsInitialized(): boolean {
         return this.isInitialized;
     }

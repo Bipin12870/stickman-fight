@@ -1,4 +1,4 @@
-export type GameState = 'BOOT' | 'ATTACK' | 'PLAY' | 'PAUSE' | 'GAME_OVER';
+export type GameState = 'BOOT' | 'ROUND_START' | 'FIGHTING' | 'ROUND_END' | 'KO' | 'VICTORY' | 'PLAY' | 'PAUSE' | 'GAME_OVER' | 'ATTACK';
 
 type StateChangeListener = (newState: GameState, oldState: GameState) => void;
 
